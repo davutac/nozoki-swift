@@ -1,152 +1,113 @@
-# Swift SDK for TelemetryDeck
+# Nozoki Swift SDK
 
-This package allows you to send signals to [TelemetryDeck](https://telemetrydeck.com) from your Swift code. Sign up for a free account at telemetrydeck.com
+Privacy-friendly app analytics for Apple platforms. Send named events ("signals") from your app; the SDK enriches them with app and device metadata, batches them and delivers them to Nozoki.
 
-## Installation
+- iOS 12+, macOS 10.13+, watchOS 5+, tvOS 13+, visionOS 1+
+- No third-party dependencies
 
-The easiest way to install TelemetryDeck is using [Swift Package Manager](https://www.swift.org/package-manager/), Apple's solution which is built into Xcode. In Xcode, press _File > Add Packages..._, then in the resulting window enter `https://github.com/TelemetryDeck/SwiftSDK` into the search field. Set the _Dependency Rule_ field to _Up to Next Major Version_, then press the _Add Package_ button. Xcode will download it, then you can choose which target of your app to add the "TelemetryDeck" library to (note that "TelemetryClient" is the old name of the lib).
+This is a fork of [TelemetryDeck's SwiftSDK](https://github.com/TelemetryDeck/SwiftSDK) 2.14.2 (commit `58f4362`), used under its license (MIT without the attribution clause, see `LICENSE`). The module and API are renamed to `Nozoki`, it sends to Nozoki by default and keeps its data apart from TelemetryDeck's on the device. The wire protocol is unchanged, so Nozoki also accepts signals from the official TelemetryDeck SDK pointed at it with `baseURL`.
 
-See our [detailed setup guide](https://telemetrydeck.com/docs/guides/swift-setup/?source=github) for more information.
+## Installation (Swift Package Manager)
 
-## Initialization
+**Xcode:** File > Add Package Dependencies…, enter `https://github.com/davutac/nozoki-swift`, then add the `Nozoki` library to your app target.
 
-Init the Telemetry Manager at app startup, so it knows your App ID (you can retrieve the App ID from your [TelemetryDeck Dashboard](https://dashboard.telemetrydeck.com/) under Set Up App)
+**Package.swift:**
 
 ```swift
-let config = TelemetryDeck.Config(appID: "<YOUR-APP-ID>")
-// optional: modify the config here
-TelemetryDeck.initialize(config: config)
+dependencies: [
+    .package(url: "https://github.com/davutac/nozoki-swift", from: "0.2.0"),
+],
+targets: [
+    .target(name: "MyApp", dependencies: [
+        .product(name: "Nozoki", package: "nozoki-swift"),
+    ]),
+]
 ```
 
-For example, if you're building a scene based app, in the `init()` function for your `App`:
+## Quick start
 
 ```swift
 import SwiftUI
-import TelemetryDeck
+import Nozoki
 
 @main
-struct TelemetryTestApp: App {
-    var body: some Scene {
-        WindowGroup {
-            ContentView()
-        }
+struct MyApp: App {
+    init() {
+        Nozoki.initialize(config: .init(appID: "YOUR-APP-ID"))
     }
 
-    init() {
-        // Note: Do not add this code to `WindowGroup.onAppear`, which will be called
-        //       *after* your window has been initialized, and might lead to our initialization
-        //       occurring too late.
-        let config = TelemetryDeck.Config(appID: "<YOUR-APP-ID>")
-        TelemetryDeck.initialize(config: config)
+    var body: some Scene {
+        WindowGroup { ContentView() }
     }
 }
+
+// Anywhere in your app:
+Nozoki.signal("Settings.opened", parameters: ["tab": "privacy"])
+
+// Optional: identify the user (hashed before it leaves the device).
+Nozoki.updateDefaultUserID(to: account.id)
+
+// Optional: send now instead of at the next interval.
+Nozoki.requestImmediateSync()
 ```
 
-Then send signals like so:
+The app ID is on the app's Settings page in the dashboard. Signals go to `https://app.nozoki.app` unless you pass `baseURL` (the dashboard's setup snippet does, for development deployments).
+
+Beyond `signal`, the SDK has helpers for durations (`startDurationSignal` / `stopAndSendDurationSignal`), navigation (`navigationPathChanged`, the `trackNavigation` view modifier), errors (`errorOccurred`), purchases and acquisition / activation / referral / revenue events.
+
+### Configuration
+
+`Nozoki.Config` (an alias of `TelemetryManagerConfiguration`) is a class: create it, adjust properties, then pass it to `initialize`.
 
 ```swift
-TelemetryDeck.signal("App.launchedRegularly")
+let config = Nozoki.Config(appID: "…")
+config.testMode = isTestFlight        // default: true in DEBUG builds, false otherwise
+config.transmitInterval = 10          // seconds between sends (the default)
+config.defaultUser = account.id       // otherwise identifierForVendor, or a generated ID on macOS
+config.analyticsDisabled = !userOptedIn
+Nozoki.initialize(config: config)
 ```
 
-## Debug -> Test Mode
+## Delivery
 
-If your app's build configuration is set to "Debug", all signals sent will be marked as testing signals. In the Telemetry Viewer app, activate **Test Mode** to see those.
+- Signals are cached (on disk across launches, up to 10,000) and sent in batches of up to 100 every `transmitInterval` seconds.
+- 2xx means delivered. 400, 401, 403, 404 (unknown app ID), 413, 422, 501 and 505 drop the batch, since it would never succeed. Anything else, including 429 (rate limited), 5xx and network errors, keeps it and retries with exponential backoff up to `maxBackoffInterval` (5 minutes).
+- The server records signals at delivery time, so signals that wait in the cache are counted on the day they arrive.
 
-If you want to manually control whether test mode is active, you can set the `config.testMode` property.
+## What is collected
 
-## User Identifiers
+Every signal carries the hashed user ID (`clientUser`), a session ID, `isTestMode`, its type, optional `floatValue` and a payload: your `parameters` plus the SDK's default parameters (app version and build, platform, OS version, device model, locale, accessibility settings, calendar context, session counts and more, under `TelemetryDeck.*` keys).
 
-Telemetry Manager will create a user identifier for you user that is specific to app installation and device. If you have a better user identifier available, such as an email address or a username, you can use that instead, by passing it on to the `TelemetryDeck.Config` (the identifier will be hashed before sending it).
+The server keeps app version, build, platform, OS version, device model, locale and SDK version as columns, stores your own parameters (plus `floatValue` and the SDK's navigation, error and purchase parameters, shown with a `Nozoki.` prefix) and discards the other defaults. Payloads keep up to 32 keys; keys are cut at 64 characters, values at 256.
 
-```swift
-config.defaultUser = "myuser@example.com"
+The SDK also sends a `Nozoki.Session.started` signal at the start of each session (`sendNewSessionBeganSignal`).
+
+## Test mode
+
+Signals carry `isTestMode`. It defaults to `true` in DEBUG builds, so data from development and simulators stays out of the dashboard's numbers unless you switch on test mode there. Set `config.testMode` explicitly to change that, e.g. for TestFlight builds.
+
+## Privacy
+
+- The user identifier never leaves the device in plain text: the SDK sends a salted SHA-256 hash of it (`salt` in the config), and the server hashes it again with the app ID.
+- Hashing is pseudonymization: a guessable value such as an email address can be recovered by brute force. Prefer an opaque account ID.
+- Payloads are sent as-is; don't put personal data in them.
+- `PrivacyInfo.xcprivacy` declares the data the SDK collects.
+
+## Development
+
+```sh
+swift build
+swift test
 ```
 
-You can update the configuration after TelemetryDeck is already initialized.
+### Pulling upstream changes
 
-## Parameters
+This repository keeps TelemetryDeck's history, so their fixes merge in:
 
-You can also send additional parameters with each signal:
-
-```swift
-TelemetryDeck.signal("Database.updated", parameters: ["numberOfDatabaseEntries": "3831"])
+```sh
+git remote add upstream https://github.com/TelemetryDeck/SwiftSDK.git
+git fetch upstream
+git merge upstream/main
 ```
 
-<details>
-<summary>TelemetryDeck will automatically send base parameters, expand to see common examples</summary>
-
-- TelemetryDeck.Accessibility.isBoldTextEnabled
-- TelemetryDeck.Accessibility.preferredContentSizeCategory
-- TelemetryDeck.AppInfo.buildNumber
-- TelemetryDeck.AppInfo.version
-- TelemetryDeck.Device.architecture
-- TelemetryDeck.Device.modelName
-- TelemetryDeck.Device.operatingSystem
-- TelemetryDeck.Device.orientation
-- TelemetryDeck.Device.platform
-- TelemetryDeck.Device.screenResolutionHeight
-- TelemetryDeck.Device.screenResolutionWidth
-- TelemetryDeck.Device.systemMajorMinorVersion
-- TelemetryDeck.Device.systemMajorVersion
-- TelemetryDeck.Device.systemVersion
-- TelemetryDeck.Device.timeZone
-- TelemetryDeck.RunContext.isAppStore
-- TelemetryDeck.RunContext.isDebug
-- TelemetryDeck.RunContext.isSimulator
-- TelemetryDeck.RunContext.isTestFlight
-- TelemetryDeck.RunContext.language
-- TelemetryDeck.RunContext.targetEnvironment
-- TelemetryDeck.SDK.version
-- TelemetryDeck.UserPreference.colorScheme
-- TelemetryDeck.UserPreference.language
-- TelemetryDeck.UserPreference.layoutDirection
-- TelemetryDeck.UserPreference.region
-
-See our [related documentation page](https://telemetrydeck.com/docs/api/default-parameters/?source=github.com) for a full list.
-</details>
-
-## Sessions
-
-With each Signal, the client sends a hash of your user ID as well as a _session ID_. This gets automatically generated when the client is initialized, so if you do nothing, you'll get a new session each time your app is started from cold storage.
-
-On iOS, tvOS, and watchOS, the session identifier will automatically update whenever your app returns from background, or if it is launched from cold storage. On other platforms, a new identifier will be generated each time your app launches. If you'd like more fine-grained session support, write a new random session identifier into the `TelemetryDeck.Config`'s `sessionID` property each time a new session begins.
-
-## Custom Salt
-
-By default, user identifiers are hashed by the TelemetryDeck SDK, and then sent to the Ingestion API, where we'll add a salt to the received identifier and hash it again.
-
-This is enough for most use cases, but if you want to extra privacy conscious, you can add in you own salt on the client side. The TelemetryDeck SDK will append the salt to all user identifers before hashing them and sending them to us.
-
-If you'd like to use a custom salt, you can do so by passing it on to the `TelemetryDeck.Config`
-
-```swift
-let config = TelemetryDeck.Config(appID: "<YOUR-APP-ID>", salt: "<A RANDOM STRING>")
-```
-
-## Custom Server
-
-A very small subset of our customers will want to use a custom signal ingestion server or a custom proxy server. To do so, you can pass the URL of the custom server to the `TelemetryDeck.Config`:
-
-```swift
-let config = TelemetryDeck.Config(appID: "<YOUR-APP-ID>", baseURL: "https://nom.telemetrydeck.com")
-```
-
-## Custom Logging Strategy
-
-By default, some logs helpful for monitoring TelemetryDeck are printed out to the console. This behaviour can be customised by overriding `config.logHandler`. This struct accepts a minimum allows log level (any log with the same or higher log level will be accepted) and a closure.
-
-This allows for compatibility with other logging solutions, such as [swift-log](https://github.com/apple/swift-log), by providing your own closure.
-
-## Developing this SDK
-
-Your PRs on TelemetryDeck's Swift SDK are very much welcome. Check out the [SwiftClientTester](https://github.com/TelemetryDeck/SwiftClientTester) project, which provides a harness you can use to work on the library and try out new things.
-
-When making a new release, run `./tag-release.sh MAJOR.MINOR.PATCH` to bump the version string in the SDK, create a new commit and tag that commit accordingly all in one step.
-
-The project includes a Makefile at the root with some useful commands:
-
-- `build`: Build the library
-- `lint`:  Applies all auto-correctable lint issues and reformats all source files
-- `test`:  Run unit tests
-
-Before finalising your PR, please run `make lint`.
+Files they add or rename come in under `TelemetryDeck` names; rename them, keep the `"TelemetryDeck.*"` parameter keys (they're the wire protocol) and run the tests.

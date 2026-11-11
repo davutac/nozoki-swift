@@ -1,8 +1,9 @@
 // swift-tools-version: 5.9
 import PackageDescription
 
+// Forked from TelemetryDeck's SwiftSDK 2.14.2 (commit 58f4362); see README.md.
 let package = Package(
-    name: "TelemetryDeck",
+    name: "Nozoki",
     platforms: [
         .macOS(.v10_13),
         .iOS(.v12),
@@ -11,25 +12,18 @@ let package = Package(
         .visionOS(.v1),
     ],
     products: [
-        .library(name: "TelemetryDeck", targets: ["TelemetryDeck"]),  // new name
-        .library(name: "TelemetryClient", targets: ["TelemetryClient"]),  // old name
+        .library(name: "Nozoki", targets: ["Nozoki"]),
     ],
     dependencies: [],
     targets: [
         .target(
-            name: "TelemetryDeck",
-            resources: [.copy("PrivacyInfo.xcprivacy")],
-            swiftSettings: [.enableExperimentalFeature("StrictConcurrency")]
-        ),
-        .target(
-            name: "TelemetryClient",
-            dependencies: ["TelemetryDeck"],
+            name: "Nozoki",
             resources: [.copy("PrivacyInfo.xcprivacy")],
             swiftSettings: [.enableExperimentalFeature("StrictConcurrency")]
         ),
         .testTarget(
-            name: "TelemetryDeckTests",
-            dependencies: ["TelemetryDeck"],
+            name: "NozokiTests",
+            dependencies: ["Nozoki"],
             swiftSettings: [.enableExperimentalFeature("StrictConcurrency")]
         ),
     ]
