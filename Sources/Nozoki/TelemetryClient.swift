@@ -10,7 +10,7 @@ import Foundation
     import TVUIKit
 #endif
 
-let sdkVersion = "0.2.0"
+let sdkVersion = "0.2.1"
 
 /// Configuration for TelemetryManager
 ///
@@ -197,7 +197,7 @@ public final class TelemetryManagerConfiguration: @unchecked Sendable {
         if let baseURL = baseURL {
             self.apiBaseURL = baseURL
         } else {
-            self.apiBaseURL = URL(string: "https://app.nozoki.app")!
+            self.apiBaseURL = URL(string: "https://api.nozoki.app")!
         }
 
         self.namespace = namespace

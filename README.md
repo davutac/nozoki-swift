@@ -15,7 +15,7 @@ This is a fork of [TelemetryDeck's SwiftSDK](https://github.com/TelemetryDeck/Sw
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/davutac/nozoki-swift", from: "0.2.0"),
+    .package(url: "https://github.com/davutac/nozoki-swift", from: "0.2.1"),
 ],
 targets: [
     .target(name: "MyApp", dependencies: [
@@ -51,7 +51,7 @@ Nozoki.updateDefaultUserID(to: account.id)
 Nozoki.requestImmediateSync()
 ```
 
-The app ID is on the app's Settings page in the dashboard. Signals go to `https://app.nozoki.app` unless you pass `baseURL` (the dashboard's setup snippet does, for development deployments).
+The app ID is on the app's Settings page in the dashboard. Signals go to `https://api.nozoki.app` unless you pass `baseURL` (the dashboard's setup snippet does, for development deployments).
 
 Beyond `signal`, the SDK has helpers for durations (`startDurationSignal` / `stopAndSendDurationSignal`), navigation (`navigationPathChanged`, the `trackNavigation` view modifier), errors (`errorOccurred`), purchases and acquisition / activation / referral / revenue events.
 

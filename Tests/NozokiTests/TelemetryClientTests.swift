@@ -19,7 +19,7 @@ struct TelemetryClientTests {
         let result = SignalManager.getServiceUrl(baseURL: config.apiBaseURL)
 
         #expect(result != nil)
-        #expect(result?.absoluteString == "https://app.nozoki.app/v2/")
+        #expect(result?.absoluteString == "https://api.nozoki.app/v2/")
     }
 
     @Test
@@ -29,7 +29,7 @@ struct TelemetryClientTests {
         let result = SignalManager.getServiceUrl(baseURL: config.apiBaseURL, namespace: "deltaquadrant")
 
         #expect(result != nil)
-        #expect(result?.absoluteString == "https://app.nozoki.app/v2/namespace/deltaquadrant/")
+        #expect(result?.absoluteString == "https://api.nozoki.app/v2/namespace/deltaquadrant/")
     }
 
     @Test
